@@ -1,0 +1,11 @@
+import { drizzle } from "drizzle-orm/node-postgres";
+import { scheduleItems } from "./db/schema.js";
+import { eq } from "drizzle-orm";
+import pgPkg from "pg";
+const pg = (pgPkg as any).default ?? pgPkg;
+const client = new pg.Client({ connectionString: "postgres://postgres@localhost:45557/postgres" });
+await client.connect();
+const db = drizzle(client);
+const res = await db.update(scheduleItems).set({ position: 7 }).where(eq(scheduleItems.id, "1790671042188"));
+console.log("OK", JSON.stringify(res.rows ?? res));
+process.exit(0);
