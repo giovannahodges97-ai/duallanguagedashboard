@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sunnyslope TK Bilingual Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <style>
+    /* --- CSS Variables & Resets --- */
+    :root {
+      --primary: #2980b9;
+      --secondary: #27ae60;
+      --accent: #e74c3c;
+      --bg: #fdf6e3;
+      --panel-bg: #ffffff;
+      --text: #2c3e50;
+      --spanish-color: #c0392b;
+      --english-color: #2980b9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 15px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* --- Custom Toasts & Confirm Modals --- */
+    #toast-container {
+      position: fixed; top: 20px; right: 20px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .toast {
+      background: #2c3e50; color: white; padding: 15px 25px; border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-weight: bold; font-size: 15px;
+      animation: slideIn 0.3s ease-out forwards; border-left: 5px solid var(--accent);
+    }
+    @keyframes slideIn {
+      from { transform: translateX(120%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .toast.fade-out { animation: fadeOut 0.3s ease-in forwards; }
+    @keyframes fadeOut { to { transform: translateX(120%); opacity: 0; } }
+
+    #custom-confirm {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center;
+      backdrop-filter: blur(3px);
+    }
+    #custom-confirm.active { display: flex; }
+    .confirm-box {
+      background: white; padding: 25px; border-radius: 12px; text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3); max-width: 350px; width: 90%;
+    }
+    .confirm-box p { font-size: 18px; margin: 0 0 25px 0; color: var(--text); font-weight: 700; }
+    .confirm-btns { display: flex; gap: 15px; justify-content: center; }
+    .btn-yes { background: var(--accent); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; transition: transform 0.1s; }
+    .btn-yes:active { transform: scale(0.95); }
+    .btn-no { background: #dfe4ea; color: var(--text); border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; transition: transform 0.1s; }
+    .btn-no:active { transform: scale(0.95); }
+
+    /* --- Header & Widgets --- */
+    header {
+      background: var(--panel-bg); padding: 10px 20px; border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08); display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 15px; flex-shrink: 0;
+    }
+    .header-titles h1 { margin: 0; color: var(--primary); font-size: 24px; }
+    .header-titles p { margin: 2px 0 0 0; color: #7f8fa6; font-size: 14px; font-weight: 500; }
+    
+    .header-controls { display: flex; align-items: center; gap: 20px; }
+    
+    /* Calendar Widget */
+    .calendar-widget {
+      background: #fff; border-radius: 8px; border: 1px solid #dfe4ea;
+      text-align: center; width: 130px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); overflow: hidden;
+    }
+    .calendar-header { background: var(--accent); color: white; font-size: 11px; padding: 4px; font-weight: bold; letter-spacing: 1px; }
+    .calendar-date { font-size: 26px; font-weight: bold; color: #2f3542; line-height: 1.1; padding: 5px 0; }
+    .calendar-day-es { font-size: 11px; color: var(--spanish-color); font-weight: bold; }
+    .calendar-day-en { font-size: 11px; color: var(--english-color); padding-bottom: 4px; }
+
+    /* Clock Widget */
+    .clock-widget { text-align: center; min-width: 100px; }
+    .time-display { font-size: 24px; font-weight: 800; color: var(--text); }
+    
+    .btn-library {
+      background-color: #8e44ad; color: white; border: none; padding: 10px 20px;
+      font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-library:hover { background-color: #9b59b6; }
+    .btn-library:active { transform: scale(0.95); }
+
+    /* --- Main Layout Grid --- */
+    .main-grid {
+      display: grid; grid-template-columns: 2fr 1fr; gap: 20px; flex-grow: 1; min-height: 0;
+    }
+
+    /* --- Schedule Panel --- */
+    .schedule-panel {
+      background: var(--panel-bg); border-radius: 12px; padding: 15px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08); display: flex; flex-direction: column; overflow: hidden;
+    }
+    .schedule-panel h2 { margin: 0 0 10px 0; font-size: 18px; display: flex; justify-content: space-between;}
+    .schedule-container { flex-grow: 1; overflow-y: auto; padding-right: 5px; }
+    .schedule-list { list-style: none; padding: 0; margin: 0; }
+    .schedule-item {
+      display: flex; align-items: center; padding: 6px 10px; margin-bottom: 6px;
+      background: #f1f2f6; border-radius: 6px; border-left: 5px solid #2ed573;
+      cursor: grab; font-size: 14px;
+    }
+    .schedule-item:active { cursor: grabbing; background: #dfe4ea; }
+    .drag-handle { font-size: 18px; color: #a4b0be; margin-right: 12px; cursor: grab; }
+    
+    .edit-input {
+      background: transparent; border: 1px solid transparent; border-radius: 4px;
+      font-family: inherit; font-size: inherit; font-weight: inherit; color: inherit;
+      padding: 2px 4px; width: 100%; transition: border 0.2s;
+    }
+    .edit-input:focus { outline: none; border-color: var(--primary); background: #fff; }
+    
+    .time-block { font-weight: 800; width: 120px; flex-shrink: 0; }
+    .content-block { flex-grow: 1; display: flex; flex-direction: column; gap: 2px; }
+    .spanish-input { color: var(--spanish-color); font-weight: 700; }
+    .english-input { color: var(--english-color); font-weight: 500; font-size: 13px; }
+    
+    .btn-add-schedule {
+      width: 100%; background: #dfe4ea; border: none; padding: 8px; border-radius: 6px;
+      font-weight: bold; color: #2f3542; cursor: pointer; margin-top: 10px; transition: background 0.2s;
+    }
+    .btn-add-schedule:hover { background: #ced6e0; }
+
+    /* --- Star Jar Panel --- */
+    .tracker-panel {
+      background: var(--panel-bg); border-radius: 12px; padding: 20px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08); display: flex; flex-direction: column; align-items: center;
+    }
+    .tracker-panel h2 { margin: 0 0 15px 0; }
+    
+    .jar-container {
+      width: 100%; max-width: 250px; flex-grow: 1;
+      border: 6px solid #b2bec3; border-top: none; border-radius: 0 0 30px 30px;
+      background: rgba(236, 240, 241, 0.4); position: relative; overflow: hidden;
+      display: flex; align-items: flex-end; justify-content: center;
+      padding: 10px; box-shadow: inset 0 -10px 20px rgba(0,0,0,0.05); margin-bottom: 20px;
+    }
+    .points-display {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      font-size: 60px; font-weight: 900; color: rgba(241, 196, 15, 0.3);
+      z-index: 0; pointer-events: none;
+    }
+    
+    .star-pile {
+      display: flex; flex-wrap: wrap-reverse; align-content: flex-start; justify-content: center;
+      gap: 4px; width: 100%; z-index: 1;
+    }
+    .star { font-size: 28px; animation: dropIn 0.7s cubic-bezier(0.25, 0.8, 0.25, 1); filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2)); }
+    
+    @keyframes dropIn {
+      0% { transform: translateY(-400px) rotate(-180deg) scale(0.5); opacity: 0; }
+      60% { transform: translateY(10px) rotate(10deg) scale(1.1); opacity: 1; }
+      80% { transform: translateY(-5px) rotate(-5deg) scale(0.95); }
+      100% { transform: translateY(0) rotate(0) scale(1); }
+    }
+
+    .tracker-controls { display: flex; gap: 15px; width: 100%; }
+    .btn-point {
+      flex: 1; border: none; padding: 15px; font-size: 20px; border-radius: 10px;
+      font-weight: 800; color: white; cursor: pointer; transition: transform 0.1s;
+    }
+    .btn-point:active { transform: scale(0.95); }
+    .btn-add { background-color: var(--secondary); box-shadow: 0 4px 0 #219a52; }
+    .btn-remove { background-color: var(--accent); box-shadow: 0 4px 0 #c0392b; }
+
+    /* --- YouTube Modal (Failsafe Thumbnails) --- */
+    .modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(44, 62, 80, 0.9); z-index: 1000; justify-content: center; align-items: center;
+      backdrop-filter: blur(5px);
+    }
+    .modal.active { display: flex; }
+    .modal-content {
+      background: var(--bg); width: 95%; max-width: 1200px; height: 90vh;
+      border-radius: 16px; padding: 20px; display: flex; flex-direction: column;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 2px solid #dfe4ea; padding-bottom: 15px; margin-bottom: 15px;
+    }
+    .modal-header h2 { margin: 0; color: var(--primary); }
+    
+    .video-adder { display: flex; gap: 10px; margin-bottom: 20px; }
+    .video-adder input { flex: 1; padding: 10px; border: 2px solid #bdc3c7; border-radius: 6px; font-size: 16px; }
+    .video-adder select { padding: 10px; border-radius: 6px; border: 2px solid #bdc3c7; font-weight: bold;}
+    .btn-add-vid { background: var(--secondary); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s;}
+    .btn-add-vid:hover { background: #219a52; }
+
+    .library-scroll { flex-grow: 1; overflow-y: auto; padding-right: 10px; }
+    .category-section h3 { border-left: 5px solid var(--primary); padding-left: 10px; color: var(--spanish-color); margin-top: 0; }
+    .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; margin-bottom: 30px; }
+    
+    /* Bulletproof Video Card Styling */
+    .video-card {
+      background: white; border-radius: 12px; display: flex; flex-direction: column;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #ecf0f1;
+    }
+    .video-thumb {
+      width: 100%; height: 150px; object-fit: cover; background: #000;
+      border-bottom: 3px solid #ff0000;
+    }
+    .btn-watch-yt {
+      background: #ff0000; color: white; text-align: center; padding: 12px;
+      text-decoration: none; font-weight: 900; font-size: 15px; letter-spacing: 0.5px;
+      transition: background 0.2s; display: flex; align-items: center; justify-content: center;
+    }
+    .btn-watch-yt:hover { background: #cc0000; }
+    
+    .video-card-footer { padding: 15px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; }
+    .video-title { font-weight: bold; font-size: 15px; margin: 0; color: var(--text); line-height: 1.3; }
+    .btn-del-vid { background: #f1f2f6; color: var(--accent); border: 1px solid #dfe4ea; border-radius: 6px; padding: 8px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; transition: background 0.2s; }
+    .btn-del-vid:hover { background: #dfe4ea; }
+    
+    .btn-close { background: #7f8fa6; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 15px; }
+    .btn-close:hover { background: #718093; }
+  </style>
+</head>
+<body>
+
+  <!-- Toast Notifications Container -->
+  <div id="toast-container"></div>
+
+  <!-- Custom Confirmation Modal -->
+  <div id="custom-confirm">
+    <div class="confirm-box">
+      <p id="confirm-msg">Are you sure?</p>
+      <div class="confirm-btns">
+        <button class="btn-no" onclick="closeConfirm(false)">Cancelar / Cancel</button>
+        <button class="btn-yes" onclick="closeConfirm(true)">Sí, Eliminar / Yes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-titles">
+      <h1>Sunnyslope TK Bilingual Dashboard</h1>
+      <p>Equitable, Strengths-Based Classroom Management</p>
+    </div>
+    <div class="header-controls">
+      <button class="btn-library" onclick="openLibrary()">🎵 Canciones / Songs</button>
+      <div class="clock-widget">
+        <div class="time-display" id="clock-time">00:00 AM</div>
+      </div>
+      <div class="calendar-widget">
+        <div class="calendar-header" id="cal-month">MONTH</div>
+        <div class="calendar-date" id="cal-date">00</div>
+        <div class="calendar-day-es" id="cal-day-es">Día</div>
+        <div class="calendar-day-en" id="cal-day-en">Day</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+    <!-- SCHEDULE PANEL -->
+    <div class="schedule-panel">
+      <h2>
+        <span>📅 Horario / Schedule</span>
+        <span style="font-size: 12px; font-weight: normal; color: #7f8fa6; align-self: flex-end;">(Drag ☰ to reorder)</span>
+      </h2>
+      <div class="schedule-container">
+        <ul class="schedule-list" id="schedule-list">
+          <!-- Populated by JS -->
+        </ul>
+        <button class="btn-add-schedule" onclick="addScheduleItem()">+ Add Time Block</button>
+      </div>
+    </div>
+
+    <!-- STAR JAR PANEL -->
+    <div class="tracker-panel">
+      <h2>🌟 Esfuerzo / Effort Points</h2>
+      <div class="jar-container" id="star-jar">
+        <div class="points-display" id="points-text">0</div>
+        <div class="star-pile" id="star-pile">
+          <!-- Stars injected here -->
+        </div>
+      </div>
+      <div class="tracker-controls">
+        <button class="btn-point btn-add" onclick="updatePoints(1)">+1 Punto</button>
+        <button class="btn-point btn-remove" onclick="updatePoints(-1)">-1 Punto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- YOUTUBE LIBRARY MODAL -->
+  <div class="modal" id="videoModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>🎵 Biblioteca de Canciones / TK Song Library</h2>
+        <button class="btn-close" onclick="closeLibrary()">Cerrar / Close</button>
+      </div>
+      
+      <div class="video-adder">
+        <input type="text" id="new-vid-url" placeholder="Paste YouTube Link here (e.g., https://youtu.be/...)">
+        <select id="new-vid-cat">
+          <option value="routine">Rutina / Routine</option>
+          <option value="calendar">Calendario / Calendar</option>
+          <option value="movement">Movimiento / Movement</option>
+          <option value="transitions">Transiciones / Transitions</option>
+        </select>
+        <button class="btn-add-vid" onclick="addVideo()">Add Video</button>
+      </div>
+
+      <div class="library-scroll" id="library-container">
+        <!-- Videos populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 0. CUSTOM TOAST & CONFIRM MODAL SYSTEM
+    // ==========================================
+    function showToast(message) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = message;
+      container.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    let confirmActionCallback = null;
+    function showConfirmModal(message, callback) {
+      document.getElementById('confirm-msg').textContent = message;
+      confirmActionCallback = callback;
+      document.getElementById('custom-confirm').classList.add('active');
+    }
+    
+    function closeConfirm(userAgreed) {
+      document.getElementById('custom-confirm').classList.remove('active');
+      if (userAgreed && confirmActionCallback) {
+        confirmActionCallback();
+      }
+      confirmActionCallback = null;
+    }
+
+    // ==========================================
+    // 1. CLOCK & CALENDAR LOGIC
+    // ==========================================
+    function updateClockAndCalendar() {
+      const now = new Date();
+      
+      let hours = now.getHours();
+      let minutes = now.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12; 
+      minutes = minutes.toString().padStart(2, '0');
+      document.getElementById('clock-time').textContent = `${hours}:${minutes} ${ampm}`;
+
+      const daysES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      const daysEN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const monthsES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+      
+      document.getElementById('cal-month').textContent = monthsES[now.getMonth()];
+      document.getElementById('cal-date').textContent = now.getDate();
+      document.getElementById('cal-day-es').textContent = daysES[now.getDay()];
+      document.getElementById('cal-day-en').textContent = daysEN[now.getDay()];
+    }
+    setInterval(updateClockAndCalendar, 1000);
+    updateClockAndCalendar();
+
+    // ==========================================
+    // 2. WEB AUDIO API (SYNTHESIZER)
+    // ==========================================
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playSound(type) {
+      try {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        const now = audioCtx.currentTime;
+        if (type === 'happy') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(523.25, now);
+          osc.frequency.setValueAtTime(659.25, now + 0.1);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+          osc.start(now); osc.stop(now + 0.3);
+        } else {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(300, now);
+          osc.frequency.exponentialRampToValueAtTime(150, now + 0.3);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+          osc.start(now); osc.stop(now + 0.3);
+        }
+      } catch(e) { console.warn("Audio skipped", e); }
+    }
+
+    // ==========================================
+    // 3. STAR JAR POINT SYSTEM
+    // ==========================================
+    let points = parseInt(localStorage.getItem('sunnyslope_points')) || 0;
+    
+    function renderStars() {
+      document.getElementById('points-text').textContent = points;
+      const pile = document.getElementById('star-pile');
+      pile.innerHTML = '';
+      const visualStars = Math.min(points, 50);
+      for (let i = 0; i < visualStars; i++) {
+        const star = document.createElement('div');
+        star.className = 'star';
+        star.textContent = '⭐';
+        star.style.animation = 'none';
+        pile.appendChild(star);
+      }
+    }
+
+    function updatePoints(delta) {
+      if (points + delta < 0) return;
+      points += delta;
+      localStorage.setItem('sunnyslope_points', points);
+      
+      document.getElementById('points-text').textContent = points;
+      const pile = document.getElementById('star-pile');
+
+      if (delta > 0) {
+        playSound('happy');
+        const star = document.createElement('div');
+        star.className = 'star';
+        star.textContent = '⭐';
+        pile.appendChild(star);
+        if (pile.children.length > 50) pile.removeChild(pile.firstChild);
+      } else {
+        playSound('sad');
+        if (pile.lastChild) pile.removeChild(pile.lastChild);
+      }
+    }
+    renderStars();
+
+    // ==========================================
+    // 4. EDITABLE DRAG & DROP SCHEDULE
+    // ==========================================
+    const defaultSchedule = [
+      { id: '1', t: "8:00–8:15", es: "Llegada", en: "Arrival / Morning Work" },
+      { id: '2', t: "8:15–8:45", es: "Círculo de Lengua", en: "Morning Meeting / Circle Time" },
+      { id: '3', t: "8:45–9:15", es: "Desayuno", en: "Snack Time" },
+      { id: '4', t: "9:15–10:00", es: "Centros de Aprendizaje", en: "Learning Centers" },
+      { id: '5', t: "10:00–10:30", es: "Juego Libre / Patio", en: "Free Play / Outdoor Play" },
+      { id: '6', t: "10:30–11:00", es: "Instrucción Pequeño Grupo", en: "Small Group Instruction" },
+      { id: '7', t: "11:00–11:45", es: "Artes / Música", en: "Arts / Movement" },
+      { id: '8', t: "11:45–12:15", es: "Almuerzo", en: "Lunch" },
+      { id: '9', t: "12:15–12:45", es: "Descanso", en: "Rest / Quiet Time" },
+      { id: '10', t: "12:45–1:15", es: "Lectura Compartida", en: "Shared Reading" },
+      { id: '11', t: "1:15–1:45", es: "Matemáticas Interactiva", en: "Interactive Math" },
+      { id: '12', t: "1:45–2:15", es: "Centro de Escritura", en: "Dramatic Play / Writing" },
+      { id: '13', t: "2:15–2:30", es: "Limpieza / Reflexión", en: "Clean-Up / Reflection" },
+      { id: '14', t: "2:30–2:45", es: "Despedida", en: "Dismissal" }
+    ];
+
+    let scheduleData = JSON.parse(localStorage.getItem('sunnyslope_schedule'));
+    if (!Array.isArray(scheduleData) || scheduleData.length === 0) {
+      scheduleData = [...defaultSchedule];
+    }
+
+    function saveSchedule() {
+      const items = document.querySelectorAll('.schedule-item');
+      scheduleData = Array.from(items).map(li => ({
+        id: li.dataset.id,
+        t: li.querySelector('.time-input').value,
+        es: li.querySelector('.es-input').value,
+        en: li.querySelector('.en-input').value
+      }));
+      localStorage.setItem('sunnyslope_schedule', JSON.stringify(scheduleData));
+    }
+
+    function renderSchedule() {
+      const list = document.getElementById('schedule-list');
+      list.innerHTML = '';
+      scheduleData.forEach(item => {
+        const li = document.createElement('li');
+        li.className = 'schedule-item';
+        li.dataset.id = item.id;
+        li.innerHTML = `
+          <span class="drag-handle">☰</span>
+          <div class="time-block">
+            <input type="text" class="edit-input time-input" value="${item.t}" onblur="saveSchedule()">
+          </div>
+          <div class="content-block">
+            <input type="text" class="edit-input spanish-input es-input" value="${item.es}" onblur="saveSchedule()">
+            <input type="text" class="edit-input english-input en-input" value="${item.en}" onblur="saveSchedule()">
+          </div>
+          <button style="border:none; background:none; cursor:pointer; color:#e74c3c; font-weight:bold; padding:0 5px;" onclick="removeScheduleItem(this)">✕</button>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    function addScheduleItem() {
+      scheduleData.push({ id: Date.now().toString(), t: "0:00–0:00", es: "Nueva Actividad", en: "New Activity" });
+      renderSchedule();
+      saveSchedule();
+      document.querySelector('.schedule-container').scrollTop = document.querySelector('.schedule-container').scrollHeight;
+    }
+
+    function removeScheduleItem(btn) {
+      showConfirmModal("¿Eliminar bloque de horario? / Delete time block?", () => {
+        btn.closest('li').remove();
+        saveSchedule();
+        showToast("Bloque eliminado / Block removed.");
+      });
+    }
+
+    renderSchedule();
+    new Sortable(document.getElementById('schedule-list'), {
+      handle: '.drag-handle',
+      animation: 150,
+      onEnd: saveSchedule
+    });
+
+    // ==========================================
+    // 5. BULLETPROOF YOUTUBE LIBRARY
+    // ==========================================
+    const defaultVideos = [
+      { id: 'dhoWPzdO4ts', title: 'Hola Amigos - Greeting', cat: 'routine' },
+      { id: 'C2DNBnhMpvQ', title: 'Días de la Semana', cat: 'calendar' },
+      { id: '5pF3ec_Jnuw', title: 'La Canción De Las Formas', cat: 'calendar' },
+      { id: 'uNeeZ7zM2G0', title: 'A Limpiar - Clean Up', cat: 'transitions' },
+      { id: '2UcZWXvgMZE', title: 'Spanish Freeze Dance', cat: 'movement' },
+      { id: 'szCw8_XjyQ8', title: 'El Baile del Gorila', cat: 'movement' }
+    ];
+
+    let videoData = JSON.parse(localStorage.getItem('sunnyslope_videos'));
+    if (!Array.isArray(videoData)) videoData = [...defaultVideos];
+
+    const categoryNames = {
+      'routine': '☀️ Rutina / Morning Routine',
+      'calendar': '📅 Calendario / Calendar',
+      'movement': '💃 Movimiento / Brain Breaks',
+      'transitions': '🧹 Transiciones / Transitions'
+    };
+
+    function renderLibrary() {
+      const container = document.getElementById('library-container');
+      container.innerHTML = '';
+      
+      for (const [catKey, catName] of Object.entries(categoryNames)) {
+        const catVids = videoData.filter(v => v.cat === catKey);
+        if (catVids.length === 0) continue;
+
+        const section = document.createElement('div');
+        section.className = 'category-section';
+        section.innerHTML = `<h3>${catName}</h3><div class="video-grid"></div>`;
+        const grid = section.querySelector('.video-grid');
+
+        catVids.forEach(v => {
+          const card = document.createElement('div');
+          card.className = 'video-card';
+          // Render THUMBNAIL and FAILSAFE BUTTON instead of iframe
+          card.innerHTML = `
+            <img class="video-thumb" src="https://img.youtube.com/vi/${v.id}/hqdefault.jpg" alt="${v.title}" />
+            <a href="https://www.youtube.com/watch?v=${v.id}" target="_blank" class="btn-watch-yt">
+              ▶ Watch on YouTube
+            </a>
+            <div class="video-card-footer">
+              <p class="video-title" title="${v.title}">${v.title}</p>
+              <button class="btn-del-vid" onclick="removeVideo('${v.id}')">✕ Eliminar / Delete</button>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+        container.appendChild(section);
+      }
+    }
+
+    function extractYouTubeId(url) {
+      const regExp = /^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+      const match = url.match(regExp);
+      return (match && match[2].length === 11) ? match[2] : null;
+    }
+
+    function addVideo() {
+      const urlInput = document.getElementById('new-vid-url');
+      const cat = document.getElementById('new-vid-cat').value;
+      const url = urlInput.value.trim();
+      
+      if (!url) return;
+      
+      const vidId = extractYouTubeId(url);
+      if (!vidId) {
+        showToast("⚠️ Enlace inválido / Invalid YouTube link.");
+        return;
+      }
+      if (videoData.some(v => v.id === vidId)) {
+        showToast("⚠️ ¡Este video ya está en la biblioteca! / Video already added!");
+        return;
+      }
+
+      videoData.push({ id: vidId, title: "New Added Video", cat: cat });
+      localStorage.setItem('sunnyslope_videos', JSON.stringify(videoData));
+      urlInput.value = '';
+      renderLibrary();
+      showToast("✅ Video añadido / Video added successfully.");
+    }
+
+    function removeVideo(id) {
+      showConfirmModal("¿Eliminar este video? / Remove this video?", () => {
+        videoData = videoData.filter(v => v.id !== id);
+        localStorage.setItem('sunnyslope_videos', JSON.stringify(videoData));
+        renderLibrary();
+        showToast("Video eliminado / Video removed.");
+      });
+    }
+
+    function openLibrary() {
+      renderLibrary();
+      document.getElementById('videoModal').classList.add('active');
+    }
+    
+    function closeLibrary() {
+      document.getElementById('videoModal').classList.remove('active');
+    }
+
+    document.getElementById('videoModal').addEventListener('click', function(e) {
+      if (e.target === this) closeLibrary();
+    });
+
+  </script>
+</body>
+</html>
