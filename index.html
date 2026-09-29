@@ -414,10 +414,21 @@
     }
 
     // ==========================================
-    // 3. STAR JAR POINT SYSTEM
+    // 3. STAR JAR POINT SYSTEM (server-persisted)
     // ==========================================
-    let points = parseInt(localStorage.getItem('sunnyslope_points')) || 0;
-    
+    let points = 0;
+
+    async function fetchPoints() {
+      try {
+        const res = await fetch('/api/points');
+        if (res.ok) {
+          const data = await res.json();
+          points = data.points || 0;
+          renderStars();
+        }
+      } catch (e) { console.warn('Could not load points', e); }
+    }
+
     function renderStars() {
       document.getElementById('points-text').textContent = points;
       const pile = document.getElementById('star-pile');
@@ -432,10 +443,20 @@
       }
     }
 
-    function updatePoints(delta) {
-      if (points + delta < 0) return;
-      points += delta;
-      localStorage.setItem('sunnyslope_points', points);
+    async function updatePoints(delta) {
+      const currentPoints = points;
+      if (currentPoints + delta < 0) return;
+      points = currentPoints + delta;
+
+      const res = await fetch('/api/points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delta })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        points = data.points;
+      }
       
       document.getElementById('points-text').textContent = points;
       const pile = document.getElementById('star-pile');
@@ -451,8 +472,9 @@
         playSound('sad');
         if (pile.lastChild) pile.removeChild(pile.lastChild);
       }
+      document.getElementById('points-text').textContent = points;
     }
-    renderStars();
+    fetchPoints();
 
     // ==========================================
     // 4. EDITABLE DRAG & DROP SCHEDULE
@@ -474,12 +496,35 @@
       { id: '14', t: "2:30–2:45", es: "Despedida", en: "Dismissal" }
     ];
 
-    let scheduleData = JSON.parse(localStorage.getItem('sunnyslope_schedule'));
-    if (!Array.isArray(scheduleData) || scheduleData.length === 0) {
-      scheduleData = [...defaultSchedule];
+    let scheduleData = [];
+
+    async function loadSchedule() {
+      try {
+        const res = await fetch('/api/state');
+        const data = await res.json();
+        if (Array.isArray(data.schedule) && data.schedule.length > 0) {
+          scheduleData = data.schedule.map((item, idx) => ({
+            id: item.id, t: item.time, es: item.spanish, en: item.english, _pos: item.position ?? idx
+          }));
+        } else {
+          scheduleData = [...defaultSchedule];
+          for (const item of scheduleData) {
+            await fetch('/api/schedule', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(item)
+            });
+          }
+        }
+        renderSchedule();
+      } catch (e) {
+        console.warn('Could not load schedule', e);
+        scheduleData = [...defaultSchedule];
+        renderSchedule();
+      }
     }
 
-    function saveSchedule() {
+    async function saveSchedule() {
       const items = document.querySelectorAll('.schedule-item');
       scheduleData = Array.from(items).map(li => ({
         id: li.dataset.id,
@@ -487,7 +532,21 @@
         es: li.querySelector('.es-input').value,
         en: li.querySelector('.en-input').value
       }));
-      localStorage.setItem('sunnyslope_schedule', JSON.stringify(scheduleData));
+      for (let i = 0; i < scheduleData.length; i++) {
+        await fetch('/api/schedule/' + scheduleData[i].id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...scheduleData[i], position: i })
+        });
+      }
+    }
+
+    async function reorderSchedule(orderIds) {
+      await fetch('/api/schedule/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: orderIds.map(id => ({ id })) })
+      });
     }
 
     function renderSchedule() {
@@ -512,26 +571,39 @@
       });
     }
 
-    function addScheduleItem() {
-      scheduleData.push({ id: Date.now().toString(), t: "0:00–0:00", es: "Nueva Actividad", en: "New Activity" });
+    async function addScheduleItem() {
+      const res = await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ t: "0:00–0:00", es: "Nueva Actividad", en: "New Activity" })
+      });
+      if (res.ok) {
+        const item = await res.json();
+        scheduleData.push({ id: item.id, t: item.time, es: item.spanish, en: item.english });
+      } else {
+        scheduleData.push({ id: Date.now().toString(), t: "0:00–0:00", es: "Nueva Actividad", en: "New Activity" });
+      }
       renderSchedule();
-      saveSchedule();
       document.querySelector('.schedule-container').scrollTop = document.querySelector('.schedule-container').scrollHeight;
     }
 
     function removeScheduleItem(btn) {
-      showConfirmModal("¿Eliminar bloque de horario? / Delete time block?", () => {
+      showConfirmModal("¿Eliminar bloque de horario? / Delete time block?", async () => {
+        const id = btn.closest('li').dataset.id;
         btn.closest('li').remove();
-        saveSchedule();
+        await fetch('/api/schedule/' + id, { method: 'DELETE' });
         showToast("Bloque eliminado / Block removed.");
       });
     }
 
-    renderSchedule();
+    loadSchedule();
     new Sortable(document.getElementById('schedule-list'), {
       handle: '.drag-handle',
       animation: 150,
-      onEnd: saveSchedule
+      onEnd: function(evt) {
+        const orderIds = Array.from(document.querySelectorAll('.schedule-item')).map(li => li.dataset.id);
+        reorderSchedule(orderIds);
+      }
     });
 
     // ==========================================
@@ -546,8 +618,19 @@
       { id: 'szCw8_XjyQ8', title: 'El Baile del Gorila', cat: 'movement' }
     ];
 
-    let videoData = JSON.parse(localStorage.getItem('sunnyslope_videos'));
-    if (!Array.isArray(videoData)) videoData = [...defaultVideos];
+    let videoData = [];
+
+    async function loadVideos() {
+      try {
+        const res = await fetch('/api/state');
+        const data = await res.json();
+        if (Array.isArray(data.videos) && data.videos.length > 0) {
+          videoData = data.videos.map(v => ({ id: v.id, title: v.title, cat: v.category }));
+        }
+      } catch (e) { console.warn('Could not load videos', e); }
+      if (!Array.isArray(videoData)) videoData = [];
+      if (videoData.length === 0) videoData = [...defaultVideos];
+    }
 
     const categoryNames = {
       'routine': '☀️ Rutina / Morning Routine',
@@ -595,13 +678,13 @@
       return (match && match[2].length === 11) ? match[2] : null;
     }
 
-    function addVideo() {
+    async function addVideo() {
       const urlInput = document.getElementById('new-vid-url');
       const cat = document.getElementById('new-vid-cat').value;
       const url = urlInput.value.trim();
-      
+
       if (!url) return;
-      
+
       const vidId = extractYouTubeId(url);
       if (!vidId) {
         showToast("⚠️ Enlace inválido / Invalid YouTube link.");
@@ -612,23 +695,33 @@
         return;
       }
 
-      videoData.push({ id: vidId, title: "New Added Video", cat: cat });
-      localStorage.setItem('sunnyslope_videos', JSON.stringify(videoData));
+      const res = await fetch('/api/videos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: vidId, title: "New Added Video", cat: cat })
+      });
+      if (res.ok) {
+        videoData.push({ id: vidId, title: "New Added Video", cat: cat });
+      } else {
+        showToast("⚠️ No se pudo guardar / Could not save video.");
+        return;
+      }
       urlInput.value = '';
       renderLibrary();
       showToast("✅ Video añadido / Video added successfully.");
     }
 
     function removeVideo(id) {
-      showConfirmModal("¿Eliminar este video? / Remove this video?", () => {
+      showConfirmModal("¿Eliminar este video? / Remove this video?", async () => {
+        await fetch('/api/videos/' + id, { method: 'DELETE' });
         videoData = videoData.filter(v => v.id !== id);
-        localStorage.setItem('sunnyslope_videos', JSON.stringify(videoData));
         renderLibrary();
         showToast("Video eliminado / Video removed.");
       });
     }
 
-    function openLibrary() {
+    async function openLibrary() {
+      await loadVideos();
       renderLibrary();
       document.getElementById('videoModal').classList.add('active');
     }
